@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>실시간 라이브 날씨 & 라이프스타일</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- FontAwesome 아이콘 CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .weather-bg { transition: background 0.8s ease, color 0.5s ease; }
+        @keyframes spin-slow {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .animate-spin-slow { animation: spin-slow 20s linear infinite; }
+    </style>
+</head>
+<body id="body-bg" class="weather-bg bg-gradient-to-br from-slate-700 to-slate-900 min-h-screen text-white font-sans antialiased">
+
+    <!-- 1. 기상 특보 실시간 알림 배너 (실제 기상 조건에 따라 동적 노출) -->
+    <div id="alert-banner" class="bg-red-600 text-white px-4 py-2.5 text-center text-sm font-bold shadow-md hidden animate-pulse sticky top-0 z-50">
+        <i class="fas fa-exclamation-triangle mr-2"></i> 
+        <span id="alert-message">현재 지역에 악천후가 감지되었습니다. 안전에 유의하세요!</span>
+    </div>
+
+    <div class="max-w-md mx-auto px-4 py-6">
+        <!-- 헤더 및 위치 정보 -->
+        <header class="flex justify-between items-center mb-8">
+            <div class="flex items-center gap-2.5">
+                <div class="bg-white/10 p-2 rounded-xl backdrop-blur-sm">
+                    <i class="fas fa-location-dot text-xl text-red-400 animate-bounce"></i>
+                </div>
+                <div>
+                    <h1 id="location-name" class="text-xl font-bold tracking-tight">위치 확인 중...</h1>
+                    <p class="text-[10px] text-white/60 uppercase tracking-wider">Real-time Weather</p>
+                </div>
+            </div>
+            <button onclick="initWeatherService(true)" class="bg-white/10 p-2.5 rounded-xl hover:bg-white/20 active:scale-95 transition backdrop-blur-sm cursor-pointer" title="새로고침">
+                <i class="fas fa-sync-alt text-sm"></i>
+            </button>
+        </header>
+
+        <!-- 2. 메인 날씨 정보 -->
+        <main class="text-center mb-8 bg-white/5 backdrop-blur-md rounded-3xl py-8 px-4 border border-white/10 shadow-xl">
+            <div class="flex justify-center mb-4 h-24 items-center">
+                <i id="weather-icon" class="fas fa-circle-notch text-5xl animate-spin text-white/50"></i>
+            </div>
+            <h2 id="current-temp" class="text-6xl font-black tracking-tighter my-2">--°C</h2>
+            <p id="weather-desc" class="text-xl font-semibold opacity-90">데이터를 불러오는 중...</p>
+            
+            <div class="flex justify-center gap-6 mt-5 pt-4 border-t border-white/10 text-xs text-white/80">
+                <div class="text-center">
+                    <p class="text-white/50 mb-0.5">체감 온도</p>
+                    <p class="font-bold text-sm" id="feels-like">--°C</p>
+                </div>
+                <div class="w-px bg-white/10 my-1"></div>
+                <div class="text-center">
+                    <p class="text-white/50 mb-0.5">불쾌지수</p>
+                    <p class="font-bold text-sm" id="discomfort-index">--</p>
+                </div>
+            </div>
+        </main>
+
+        <!-- 3. 대기질 및 세부 환경 정보 -->
+        <section class="bg-white/10 backdrop-blur-md rounded-2xl p-4 mb-6 grid grid-cols-2 gap-4 shadow-lg border border-white/10">
+            <!-- 미세먼지 -->
+            <div class="flex items-center gap-3 bg-black/10 p-3 rounded-xl">
+                <div id="pm10-box" class="bg-gray-500/30 p-2.5 rounded-lg text-gray-300 w-10 h-10 flex items-center justify-center">
+                    <i class="fas fa-smog"></i>
+                </div>
+                <div>
+                    <p class="text-[11px] text-white/60 font-medium">미세먼지 (PM10)</p>
+                    <p id="pm10-value" class="font-bold text-xs mt-0.5">-- ㎍/㎥</p>
+                </div>
+            </div>
+            <!-- 초미세먼지 -->
+            <div class="flex items-center gap-3 bg-black/10 p-3 rounded-xl">
+                <div id="pm25-box" class="bg-gray-500/30 p-2.5 rounded-lg text-gray-300 w-10 h-10 flex items-center justify-center">
+                    <i class="fas fa-mask"></i>
+                </div>
+                <div>
+                    <p class="text-[11px] text-white/60 font-medium">초미세먼지 (2.5)</p>
+                    <p id="pm25-value" class="font-bold text-xs mt-0.5">-- ㎍/㎥</p>
+                </div>
+            </div>
+            <!-- 습도 -->
+            <div class="flex items-center gap-3 bg-black/10 p-3 rounded-xl">
+                <div class="bg-blue-500/20 p-2.5 rounded-lg text-blue-300 w-10 h-10 flex items-center justify-center">
+                    <i class="fas fa-droplet"></i>
+                </div>
+                <div>
+                    <p class="text-[11px] text-white/60 font-medium">현재 습도</p>
+                    <p id="humidity-value" class="font-bold text-sm mt-0.5">--%</p>
+                </div>
+            </div>
+            <!-- 자외선 지수 -->
+            <div class="flex items-center gap-3 bg-black/10 p-3 rounded-xl">
+                <div id="uv-box" class="bg-yellow-500/20 p-2.5 rounded-lg text-yellow-300 w-10 h-10 flex items-center justify-center">
+                    <i class="fas fa-sun text-sm"></i>
+                </div>
+                <div>
+                    <p class="text-[11px] text-white/60 font-medium">자외선 지수</p>
+                    <p id="uv-value" class="font-bold text-sm mt-0.5">--</p>
+                </div>
+            </div>
+            <!-- 일출 / 일몰 -->
+            <div class="flex items-center gap-3 bg-black/10 p-3 rounded-xl col-span-2">
+                <div class="bg-orange-500/20 p-2.5 rounded-lg text-orange-300 w-10 h-10 flex items-center justify-center">
+                    <i class="fas fa-cloud-sun"></i>
+                </div>
+                <div class="flex justify-between w-full pr-2 items-center">
+                    <div>
+                        <p class="text-[11px] text-white/60 font-medium">오늘의 일출 및 일몰</p>
+                        <p id="sun-time" class="font-bold text-xs mt-0.5">일출 --:-- / 일몰 --:--</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. 생활 밀착형 오늘 코디 및 가이드 추천 -->
+        <section class="bg-white/10 backdrop-blur-md rounded-2xl p-5 shadow-lg border border-white/10">
+            <h3 class="font-bold text-base mb-4 flex items-center gap-2 pb-2 border-b border-white/10">
+                <i class="fas fa-shirt text-indigo-300"></i> 스마트 라이프스타일 가이드
+            </h3>
+            <div class="space-y-3.5">
+                <div class="bg-black/10 p-3.5 rounded-xl border border-white/5">
+                    <p class="text-xs text-white/50 font-bold mb-1 flex items-center gap-1">
+                        <span>👔</span> 오늘의 추천 코디
+                    </p>
+                    <p id="outfit-recommendation" class="text-sm text-white/90 leading-relaxed">기온 정보를 분석하여 의상을 추천해 드립니다.</p>
+                </div>
+                <div class="bg-black/10 p-3.5 rounded-xl border border-white/5">
+                    <p class="text-xs text-white/50 font-bold mb-1 flex items-center gap-1">
+                        <span>💡</span> 실시간 날씨 맞춤 팁
+                    </p>
+                    <p id="lifestyle-tip" class="text-sm text-white/90 leading-relaxed">현재 날씨 상태와 대기질에 맞는 팁을 계산하고 있습니다.</p>
+                </div>
+            </div>
+        </section>
+        
+        <footer class="text-center mt-8 text-[11px] text-white/40 space-y-1">
+            <p>Data provided by Open-Meteo & BigDataCloud (No API Key Required)</p>
+            <p id="cache-time">마지막 업데이트: -</p>
+        </footer>
+    </div>
+
+    <!-- 비즈니스 로직 및 API 연동 스크립트 -->
+    <script>
+        const CACHE_KEY = "weather_service_data";
+        const CACHE_TIME_KEY = "weather_service_time";
+        const CACHE_DURATION = 10 * 60 * 1000; // 10분 캐싱 기본값
+
+        window.addEventListener('DOMContentLoaded', () => {
+            initWeatherService(false);
+        });
+
+        // 1. 서비스 초기화 및 위치 권한 획득 (Geolocation API)
+        function initWeatherService(forcedRefresh = false) {
+            document.getElementById('weather-desc').innerText = "위치를 탐색 중입니다...";
+            
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lon = position.coords.longitude;
+                        checkCacheAndFetch(lat, lon, forcedRefresh);
+                    },
+                    (error) => {
+                        console.warn("위치 정보 권한 거부 또는 오류로 기본 위치(서울)를 사용합니다.", error);
+                        checkCacheAndFetch(37.5665, 126.9780, forcedRefresh); // 서울 시청 중심 좌표
+                    },
+                    { timeout: 10000 }
+                );
+            } else {
+                checkCacheAndFetch(37.5665, 126.9780, forcedRefresh);
+            }
+        }
+
+        // 2. 캐싱 레이어 관리 (무료 API 요청 최적화 및 속도 향상)
+        function checkCacheAndFetch(lat, lon, forcedRefresh) {
+            const cachedData = localStorage.getItem(CACHE_KEY);
+            const cachedTime = localStorage.getItem(CACHE_TIME_KEY);
+            const now = Date.now();
+
+            if (!forcedRefresh && cachedData && cachedTime && (now - cachedTime < CACHE_DURATION)) {
+                console.log("의도된 캐시 데이터 렌더링 진행");
+                const parsedData = JSON.parse(cachedData);
+                renderUI(parsedData);
+                document.getElementById('cache-time').innerText = `마지막 업데이트: 캐시 데이터 (${new Date(parseInt(cachedTime)).toLocaleTimeString()})`;
+            } else {
+                fetchRealApiData(lat, lon);
+            }
+        }
+
+        // 3. 완전 공개 무료 API 호출 (API Key 등록이 필요 없는 결합형 엔드포인트)
+        async function fetchRealApiData(lat, lon) {
+            try {
+                document.getElementById('weather-desc').innerText = "기상 데이터를 불러오는 중...";
+                
+                // A. 역지오코딩 API (BigDataCloud - 무료, 한글 지역명 반환)
+                const geoUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=ko`;
+                
+                // B. 날씨 예측 API (Open-Meteo - 비상업적 완전 무료 기상 API)
+                const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code&daily=uv_index_max,sunrise,sunset&timezone=auto`;
+                
+                // C. 대기 오염 정보 API (Open-Meteo Air Quality - 미세먼지 수치 수집)
+                const airUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=pm10,pm2_5`;
+
+                // 병렬 페칭으로 로딩 속도 극대화
+                const [geoRes, weatherRes, airRes] = await Promise.all([
+                    fetch(geoUrl).then(res => res.json()),
+                    fetch(weatherUrl).then(res => res.json()),
+                    fetch(airUrl).then(res => res.json())
+                ]);
+
+                // 위치 정보 가공
+                let locationName = "대한민국 어딘가";
+                if (geoRes.principalSubdivision || geoRes.locality) {
+                    locationName = `${geoRes.principalSubdivision} ${geoRes.locality || ''}`.trim();
+                }
+
+                // 기상 변수 매핑
+                const current = weatherRes.current;
+                const daily = weatherRes.daily;
+                const airCurrent = airRes.current;
+
+                // 불쾌지수(Discomfort Index) 공식 연산 계산식 적용
+                const temp = current.temperature_2m;
+                const rh = current.relative_humidity_2m;
+                const di = (1.8 * temp) - 0.55 * (1 - rh / 100) * (1.8 * temp - 26) + 32;
+
+                // 데이터 객체 표준화 통합
+                const structuralData = {
+                    location: locationName,
+                    temp: Math.round(temp),
+                    feelsLike: Math.round(current.apparent_temperature),
+                    humidity: rh,
+                    weatherCode: current.weather_code,
+                    uv: daily.uv_index_max[0],
+                    sunrise: daily.sunrise[0].split('T')[1],
+                    sunset: daily.sunset[0].split('T')[1],
+                    pm10: Math.round(airCurrent.pm10),
+                    pm25: Math.round(airCurrent.pm2_5),
+                    discomfortIndex: Math.round(di)
+                };
+
+                // 로컬 스토리지 캐시 최신화
+                localStorage.setItem(CACHE_KEY, JSON.stringify(structuralData));
+                localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+
+                renderUI(structuralData);
+
+            } catch (error) {
+                console.error("API 수신 중 에러 발생:", error);
+                document.getElementById('weather-desc').innerText = "서버 연결에 실패했습니다.";
+                alert("날씨 데이터를 실시간으로 가져오는 도중 네트워크 오류가 발생했습니다.");
+            }
+        }
+
+        // 4. WMO 기상 코드 변환 및 팩토리 로직 기획
+        function parseWmoCode(code) {
+            // WMO Weather Interpretation Codes (WW)
+            if (code === 0) return { status: "맑음", state: "Sunny", icon: "fas fa-sun text-yellow-300 animate-spin-slow" };
+            if ([1, 2, 3].includes(code)) return { status: "구름 조금 / 흐림", state: "Cloudy", icon: "fas fa-cloud-sun text-blue-200" };
+            if ([45, 48].includes(code)) return { status: "안개 자욱함", state: "Cloudy", icon: "fas fa-smog text-slate-300" };
+            if ([51, 53, 55, 61, 63, 65, 80, 81, 82].includes(code)) return { status: "비 내림", state: "Rainy", icon: "fas fa-cloud-showers-heavy text-slate-400" };
+            if ([71, 73, 75, 77, 85, 86].includes(code)) return { status: "눈 내림", state: "Snowy", icon: "fas fa-snowflake text-sky-100 animate-pulse" };
+            if ([95, 96, 99].includes(code)) return { status: "뇌우 / 천둥번개", state: "Thunder", icon: "fas fa-cloud-bolt text-yellow-400" };
+            return { status: "흐림", state: "Cloudy", icon: "fas fa-cloud text-white" };
+        }
+
+        // 5. 대기질 지수 기준 분류 가공 함수
+        function getAqiStatus(pm10, pm25) {
+            // 한국 미세먼지 환경 기준 적용
+            if (pm25 <= 15 && pm10 <= 30) return { text: "최고 좋음", color: "text-emerald-400", bg: "bg-emerald-500/20" };
+            if (pm25 <= 35 && pm10 <= 80) return { text: "보통 수준", color: "text-green-300", bg: "bg-green-500/20" };
+            if (pm25 <= 75 && pm10 <= 150) return { text: "나쁨 (유의)", color: "text-orange-400", bg: "bg-orange-500/20" };
+            return { text: "매우 나쁨 (경고)", color: "text-red-400", bg: "bg-red-500/20" };
+        }
+
+        // 6. 동적 테마 매칭 및 UI 렌더링 종합 실행 엔진
+        function renderUI(data) {
+            const wmo = parseWmoCode(data.weatherCode);
+            const aqi = getAqiStatus(data.pm10, data.pm25);
+
+            // 텍스트 매핑 노출
+            document.getElementById('location-name').innerText = data.location;
+            document.getElementById('current-temp').innerText = `${data.temp}°C`;
+            document.getElementById('weather-desc').innerText = wmo.status;
+            document.getElementById('feels-like').innerText = `${data.feelsLike}°C`;
+            document.getElementById('humidity-value').innerText = `${data.humidity}%`;
+            document.getElementById('uv-value').innerText = `${data.uv}`;
+            document.getElementById('sun-time').innerText = `일출 ${data.sunrise} / 일몰 ${data.sunset}`;
+            
+            // 미세먼지 수치 매핑
+            const pm10Element = document.getElementById('pm10-value');
+            pm10Element.innerText = `${data.pm10} ㎍/㎥`;
+            pm10Element.className = `font-bold text-xs mt-0.5 ${aqi.color}`;
+            document.getElementById('pm10-box').className = `${aqi.bg} p-2.5 rounded-lg ${aqi.color} w-10 h-10 flex items-center justify-center`;
+
+            const pm25Element = document.getElementById('pm25-value');
+            pm25Element.innerText = `${data.pm25} ㎍/㎥`;
+            pm25Element.className = `font-bold text-xs mt-0.5 ${aqi.color}`;
+            document.getElementById('pm25-box').className = `${aqi.bg} p-2.5 rounded-lg ${aqi.color} w-10 h-10 flex items-center justify-center`;
+
+            // 불쾌지수 한글 가이드화
+            let diText = "쾌적";
+            if(data.discomfortIndex >= 80) diText = "매우 높음 😡";
+            else if(data.discomfortIndex >= 75) diText = "높음 😑";
+            else if(data.discomfortIndex >= 68) diText = "보통 🙂";
+            document.getElementById('discomfort-index').innerText = `${data.discomfortIndex} (${diText})`;
+
+            // UV 박스 색상 다이내믹 변경
+            const uvBox = document.getElementById('uv-box');
+            if (data.uv >= 8) uvBox.className = "bg-purple-500/20 p-2.5 rounded-lg text-purple-400 w-10 h-10 flex items-center justify-center";
+            else if (data.uv >= 6) uvBox.className = "bg-red-500/20 p-2.5 rounded-lg text-red-400 w-10 h-10 flex items-center justify-center";
+            else if (data.uv >= 3) uvBox.className = "bg-yellow-500/20 p-2.5 rounded-lg text-yellow-300 w-10 h-10 flex items-center justify-center";
+            else uvBox.className = "bg-green-500/20 p-2.5 rounded-lg text-green-300 w-10 h-10 flex items-center justify-center";
+
+            // 스마트 코디 알고리즘 팩토리 연산
+            let outfit = "";
+            const t = data.temp;
+            if (t >= 28) outfit = "폭염 주의! 얇은 민소매, 반팔티, 반바지와 통풍이 잘되는 린넨 소재 의류가 필수입니다.";
+            else if (t >= 23) outfit = "가벼운 반팔 셔츠, 얇은 카라티, 반바지 또는 면바지를 매치하면 쾌적합니다.";
+            else if (t >= 20) outfit = "긴팔 티셔츠, 얇은 슬랙스, 셔츠 단품이 적당하며 실내 에어컨 대비용으로 가벼운 외투를 추천해요.";
+            else if (t >= 17) outfit = "맨투맨, 니트, 후드티에 청바지 혹은 긴바지를 매치하기 가장 예쁜 온도입니다.";
+            else if (t >= 12) outfit = "가벼운 자켓, 청자켓, 가디건을 셔츠나 티셔츠 위에 겹쳐 입어 체온 변화에 대비하세요.";
+            else if (t >= 9) outfit = "트렌치코트, 무스탕, 점퍼나 두꺼운 니트 가디건, 기모 바지가 어울리는 선선한 날씨입니다.";
+            else if (t >= 5) outfit = "울 코트, 가죽 자켓을 꺼내 입으시고 내의(히트텍)나 따뜻한 레깅스를 받쳐 입으세요.";
+            else outfit = "한파 경보 수준! 두꺼운 다운 패딩이나 롱패딩, 목도리, 장갑, 기모 제품으로 중무장해 주세요.";
+            document.getElementById('outfit-recommendation').innerText = outfit;
+
+            // 맞춤 생활 정보 연산
+            let tip = "야외 산책 및 일상 활동을 하기에 무난한 기상 환경입니다.";
+            if (wmo.state === 'Rainy') tip = "지속적인 강수가 있으니 튼튼한 우산을 가방에 꼭 넣으시고, 미끄러짐 방지 신발을 착용하세요.";
+            else if (wmo.state === 'Thunder') tip = "낙뢰와 돌풍이 동반되오니 야외 활동을 중단하시고 신속히 안전한 실내 건물로 대피해 주세요.";
+            else if (wmo.state === 'Snowy') tip = "빙판길 낙상 사고에 극도로 유의하세요! 자가용 보다는 대중교통 이용을 권장합니다.";
+            else if (data.pm25 > 35 || data.pm10 > 80) tip = "미세먼지 농도가 심각합니다. 호흡기 보호를 위해 보건용 KF94 마스크를 의무 착용하세요.";
+            else if (data.uv >= 6) tip = "자외선 지수가 강렬합니다. 피부 보호를 위해 선크림을 덧바르고 선글라스나 모자를 착용하세요.";
+            document.getElementById('lifestyle-tip').innerText = tip;
+
+            // 기상 특보 강제 노출 조건부 필터링 (폭우 및 낙뢰 경보)
+            const alertBanner = document.getElementById('alert-banner');
+            if (['Rainy', 'Thunder'].includes(wmo.state) && data.humidity >= 85) {
+                document.getElementById('alert-message').innerText = `현재 권역 기상 악화 [${wmo.status}] 배수구 정비 상태를 확인하고 침수 피해에 유의하세요.`;
+                alertBanner.classList.remove('hidden');
+            } else {
+                alertBanner.classList.add('hidden');
+            }
+
+            // 시각적 테마 변화 적용 엔진 (Weather Background Engine)
+            const bodyBg = document.getElementById('body-bg');
+            const weatherIcon = document.getElementById('weather-icon');
+            weatherIcon.className = wmo.icon;
+
+            if (wmo.state === 'Sunny') {
+                bodyBg.className = "weather-bg bg-gradient-to-br from-amber-400 via-orange-500 to-amber-700 min-h-screen text-white font-sans antialiased";
+            } else if (wmo.state === 'Rainy' || wmo.state === 'Thunder') {
+                bodyBg.className = "weather-bg bg-gradient-to-br from-slate-600 via-slate-800 to-zinc-950 min-h-screen text-white font-sans antialiased";
+            } else if (wmo.state === 'Snowy') {
+                bodyBg.className = "weather-bg bg-gradient-to-br from-sky-400 via-blue-500 to-slate-600 min-h-screen text-white font-sans antialiased";
+            } else { // Cloudy 등 흐린 기상상태 기본형
+                bodyBg.className = "weather-bg bg-gradient-to-br from-cyan-600 via-slate-600 to-zinc-800 min-h-screen text-white font-sans antialiased";
+            }
+
+            document.getElementById('cache-time').innerText = `마지막 업데이트: 실시간 데이터 반영 (${new Date().toLocaleTimeString()})`;
+        }
+    </script>
+</body>
+</html>
